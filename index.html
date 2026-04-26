@@ -1,0 +1,1946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FaceAura AI — AR Face Scanner & Style Advisor</title>
+    <meta name="description" content="Scan your face with AI-powered AR technology. Get face ratings, hairstyle suggestions, beard style recommendations, skincare routines, and clothing advice.">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --cyan: #00f0ff;
+            --cyan-dim: #00f0ff44;
+            --magenta: #ff00e5;
+            --magenta-dim: #ff00e544;
+            --gold: #ffd700;
+            --gold-dim: #ffd70044;
+            --green: #00ff88;
+            --green-dim: #00ff8844;
+            --bg-dark: #0a0a1a;
+            --bg-card: #0d0d2488;
+            --bg-glass: rgba(13, 13, 36, 0.75);
+            --text-primary: #e8e8ff;
+            --text-secondary: #8888aa;
+            --border-glow: rgba(0, 240, 255, 0.15);
+        }
+
+        body {
+            font-family: 'Rajdhani', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        /* ===== ANIMATED BACKGROUND ===== */
+        .bg-grid {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background-image:
+                linear-gradient(rgba(0,240,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,240,255,0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+            animation: gridScroll 20s linear infinite;
+        }
+        @keyframes gridScroll {
+            to { background-position: 60px 60px; }
+        }
+
+        .bg-particles {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            overflow: hidden;
+        }
+        .particle {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: var(--cyan);
+            border-radius: 50%;
+            animation: floatParticle linear infinite;
+            opacity: 0;
+        }
+        @keyframes floatParticle {
+            0% { opacity: 0; transform: translateY(100vh) scale(0); }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { opacity: 0; transform: translateY(-10vh) scale(1); }
+        }
+
+        /* ===== HEADER ===== */
+        .header {
+            position: relative;
+            z-index: 10;
+            text-align: center;
+            padding: 30px 20px 20px;
+        }
+        .logo {
+            font-family: 'Orbitron', monospace;
+            font-size: 2.2rem;
+            font-weight: 900;
+            letter-spacing: 6px;
+            background: linear-gradient(135deg, var(--cyan), var(--magenta), var(--gold));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: none;
+            filter: drop-shadow(0 0 20px rgba(0,240,255,0.3));
+            animation: logoPulse 3s ease-in-out infinite;
+        }
+        @keyframes logoPulse {
+            0%,100% { filter: drop-shadow(0 0 20px rgba(0,240,255,0.3)); }
+            50% { filter: drop-shadow(0 0 40px rgba(0,240,255,0.6)); }
+        }
+        .tagline {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            letter-spacing: 4px;
+            margin-top: 6px;
+            text-transform: uppercase;
+        }
+
+        /* ===== MAIN LAYOUT ===== */
+        .main-container {
+            position: relative;
+            z-index: 10;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* ===== SCANNER SECTION ===== */
+        .scanner-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 24px;
+        }
+
+        .scanner-frame {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            aspect-ratio: 4/3;
+            border-radius: 20px;
+            overflow: hidden;
+            border: 2px solid var(--border-glow);
+            background: #000;
+            box-shadow:
+                0 0 40px rgba(0,240,255,0.1),
+                inset 0 0 60px rgba(0,0,0,0.5);
+        }
+
+        .scanner-frame::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 22px;
+            padding: 2px;
+            background: linear-gradient(135deg, var(--cyan), transparent 40%, transparent 60%, var(--magenta));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+            display: block;
+        }
+
+        #faceCanvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 3;
+            pointer-events: none;
+        }
+
+        /* ===== LASER SCAN EFFECT ===== */
+        .laser-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, var(--cyan), var(--magenta), var(--cyan), transparent);
+            z-index: 4;
+            opacity: 0;
+            pointer-events: none;
+            box-shadow: 0 0 20px var(--cyan), 0 0 60px var(--cyan-dim);
+        }
+        .laser-line.active {
+            opacity: 1;
+            animation: laserScan 2.5s ease-in-out infinite;
+        }
+        @keyframes laserScan {
+            0% { top: 5%; }
+            50% { top: 90%; }
+            100% { top: 5%; }
+        }
+
+        .laser-vertical {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(180deg, transparent, var(--magenta), var(--cyan), var(--magenta), transparent);
+            z-index: 4;
+            opacity: 0;
+            pointer-events: none;
+            box-shadow: 0 0 15px var(--magenta), 0 0 40px var(--magenta-dim);
+        }
+        .laser-vertical.active {
+            opacity: 0.7;
+            animation: laserScanV 3s ease-in-out infinite;
+        }
+        @keyframes laserScanV {
+            0% { left: 10%; }
+            50% { left: 90%; }
+            100% { left: 10%; }
+        }
+
+        /* Scanner corner brackets */
+        .corner-bracket {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            z-index: 5;
+            pointer-events: none;
+        }
+        .corner-bracket::before, .corner-bracket::after {
+            content: '';
+            position: absolute;
+            background: var(--cyan);
+            box-shadow: 0 0 8px var(--cyan);
+        }
+        .corner-bracket.tl { top: 12px; left: 12px; }
+        .corner-bracket.tl::before { top: 0; left: 0; width: 20px; height: 2px; }
+        .corner-bracket.tl::after { top: 0; left: 0; width: 2px; height: 20px; }
+        .corner-bracket.tr { top: 12px; right: 12px; }
+        .corner-bracket.tr::before { top: 0; right: 0; width: 20px; height: 2px; }
+        .corner-bracket.tr::after { top: 0; right: 0; width: 2px; height: 20px; }
+        .corner-bracket.bl { bottom: 12px; left: 12px; }
+        .corner-bracket.bl::before { bottom: 0; left: 0; width: 20px; height: 2px; }
+        .corner-bracket.bl::after { bottom: 0; left: 0; width: 2px; height: 20px; }
+        .corner-bracket.br { bottom: 12px; right: 12px; }
+        .corner-bracket.br::before { bottom: 0; right: 0; width: 20px; height: 2px; }
+        .corner-bracket.br::after { bottom: 0; right: 0; width: 2px; height: 20px; }
+
+        /* HUD overlays */
+        .hud-status {
+            position: absolute;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 6;
+            font-family: 'Orbitron', monospace;
+            font-size: 0.7rem;
+            letter-spacing: 3px;
+            color: var(--cyan);
+            text-shadow: 0 0 10px var(--cyan);
+            text-transform: uppercase;
+            background: rgba(0,0,0,0.6);
+            padding: 4px 16px;
+            border-radius: 20px;
+            border: 1px solid var(--cyan-dim);
+        }
+
+        .hud-data {
+            position: absolute;
+            bottom: 16px;
+            left: 16px;
+            z-index: 6;
+            font-family: 'Orbitron', monospace;
+            font-size: 0.6rem;
+            color: var(--green);
+            text-shadow: 0 0 6px var(--green);
+            line-height: 1.8;
+        }
+
+        .hud-fps {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            z-index: 6;
+            font-family: 'Orbitron', monospace;
+            font-size: 0.6rem;
+            color: var(--gold);
+            text-shadow: 0 0 6px var(--gold);
+        }
+
+        /* ===== GENDER SELECTOR ===== */
+        .gender-selector {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .gender-btn {
+            font-family: 'Orbitron', monospace;
+            font-size: 0.8rem;
+            letter-spacing: 2px;
+            padding: 12px 32px;
+            border-radius: 12px;
+            border: 1.5px solid rgba(0, 240, 255, 0.2);
+            background: rgba(0,0,0,0.6);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .gender-btn:hover {
+            border-color: rgba(0, 240, 255, 0.5);
+        }
+        .gender-btn.active.male {
+            border-color: #00aaff;
+            color: #00aaff;
+            background: rgba(0,170,255,0.1);
+            box-shadow: 0 0 20px rgba(0,170,255,0.2);
+        }
+        .gender-btn.active.female {
+            border-color: #ff0099;
+            color: #ff0099;
+            background: rgba(255,0,153,0.1);
+            box-shadow: 0 0 20px rgba(255,0,153,0.2);
+        }
+
+        /* ===== CONTROLS ===== */
+        .controls {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            font-family: 'Orbitron', monospace;
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            padding: 14px 32px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .btn-scan {
+            background: linear-gradient(135deg, #00243d, #001a2e);
+            color: var(--cyan);
+            border: 1.5px solid var(--cyan-dim);
+            box-shadow: 0 0 20px rgba(0,240,255,0.1);
+        }
+        .btn-scan:hover {
+            box-shadow: 0 0 40px rgba(0,240,255,0.3);
+            border-color: var(--cyan);
+            transform: translateY(-2px);
+        }
+        .btn-scan:active {
+            transform: translateY(0);
+        }
+        .btn-scan.scanning {
+            animation: btnPulse 1.5s ease-in-out infinite;
+        }
+        @keyframes btnPulse {
+            0%,100% { box-shadow: 0 0 20px rgba(0,240,255,0.2); }
+            50% { box-shadow: 0 0 50px rgba(0,240,255,0.5); }
+        }
+
+        .btn-reset {
+            background: linear-gradient(135deg, #2d0024, #1a001a);
+            color: var(--magenta);
+            border: 1.5px solid var(--magenta-dim);
+        }
+        .btn-reset:hover {
+            box-shadow: 0 0 40px rgba(255,0,229,0.3);
+            border-color: var(--magenta);
+            transform: translateY(-2px);
+        }
+
+        /* ===== RESULTS SECTION ===== */
+        .results-section {
+            display: none;
+            margin-top: 40px;
+            animation: fadeInUp 0.8s ease-out;
+        }
+        .results-section.visible {
+            display: block;
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(40px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .results-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .results-header h2 {
+            font-family: 'Orbitron', monospace;
+            font-size: 1.5rem;
+            letter-spacing: 4px;
+            color: var(--cyan);
+            text-shadow: 0 0 20px var(--cyan-dim);
+        }
+
+        /* Score Display */
+        .score-showcase {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 40px;
+        }
+
+        .score-ring {
+            position: relative;
+            width: 220px;
+            height: 220px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .score-ring svg {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg);
+        }
+        .score-ring .ring-bg {
+            fill: none;
+            stroke: rgba(255,255,255,0.05);
+            stroke-width: 6;
+        }
+        .score-ring .ring-fill {
+            fill: none;
+            stroke: url(#scoreGradient);
+            stroke-width: 6;
+            stroke-linecap: round;
+            stroke-dasharray: 628;
+            stroke-dashoffset: 628;
+            transition: stroke-dashoffset 2s ease-out;
+            filter: drop-shadow(0 0 10px rgba(0,240,255,0.5));
+        }
+        .score-value {
+            font-family: 'Orbitron', monospace;
+            font-size: 4rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--cyan), var(--gold));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            z-index: 2;
+        }
+        .score-label {
+            position: absolute;
+            bottom: 20px;
+            font-family: 'Orbitron', monospace;
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        /* Feature Bars */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 12px;
+            margin-bottom: 40px;
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .feature-bar {
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            border-radius: 12px;
+            padding: 14px 18px;
+            border: 1px solid var(--border-glow);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            transition: all 0.3s ease;
+        }
+        .feature-bar:hover {
+            border-color: var(--cyan);
+            box-shadow: 0 0 20px rgba(0,240,255,0.1);
+            transform: translateY(-2px);
+        }
+        .feature-icon {
+            font-size: 1.4rem;
+            width: 36px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .feature-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .feature-name {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+        .feature-track {
+            height: 6px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .feature-fill {
+            height: 100%;
+            border-radius: 3px;
+            width: 0%;
+            transition: width 1.5s ease-out;
+        }
+        .feature-fill.cyan { background: linear-gradient(90deg, var(--cyan-dim), var(--cyan)); box-shadow: 0 0 10px var(--cyan-dim); }
+        .feature-fill.magenta { background: linear-gradient(90deg, var(--magenta-dim), var(--magenta)); box-shadow: 0 0 10px var(--magenta-dim); }
+        .feature-fill.gold { background: linear-gradient(90deg, var(--gold-dim), var(--gold)); box-shadow: 0 0 10px var(--gold-dim); }
+        .feature-fill.green { background: linear-gradient(90deg, var(--green-dim), var(--green)); box-shadow: 0 0 10px var(--green-dim); }
+        .feature-score {
+            font-family: 'Orbitron', monospace;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--cyan);
+            min-width: 36px;
+            text-align: right;
+        }
+
+        /* ===== RECOMMENDATION CARDS ===== */
+        .recommendations {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .rec-card {
+            background: var(--bg-glass);
+            backdrop-filter: blur(16px);
+            border-radius: 20px;
+            border: 1px solid var(--border-glow);
+            overflow: hidden;
+            transition: all 0.4s ease;
+            animation: cardSlideIn 0.6s ease-out backwards;
+        }
+        .rec-card:nth-child(1) { animation-delay: 0.1s; }
+        .rec-card:nth-child(2) { animation-delay: 0.25s; }
+        .rec-card:nth-child(3) { animation-delay: 0.4s; }
+        .rec-card:nth-child(4) { animation-delay: 0.55s; }
+
+        @keyframes cardSlideIn {
+            from { opacity: 0; transform: translateY(30px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .rec-card:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 20px 60px rgba(0,240,255,0.1);
+            border-color: var(--cyan);
+        }
+
+        .rec-card-header {
+            padding: 20px 24px 16px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .rec-card-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+        .rec-card-icon.hair { background: linear-gradient(135deg, #1a0033, #330066); border: 1px solid rgba(153, 0, 255, 0.3); }
+        .rec-card-icon.beard { background: linear-gradient(135deg, #002200, #004400); border: 1px solid rgba(0, 255, 136, 0.3); }
+        .rec-card-icon.makeup { background: linear-gradient(135deg, #33001a, #660033); border: 1px solid rgba(255, 0, 153, 0.3); }
+        .rec-card-icon.skin { background: linear-gradient(135deg, #331a00, #663300); border: 1px solid rgba(255, 170, 0, 0.3); }
+        .rec-card-icon.clothes { background: linear-gradient(135deg, #001a33, #003366); border: 1px solid rgba(0, 170, 255, 0.3); }
+
+        .rec-card-title {
+            font-family: 'Orbitron', monospace;
+            font-size: 0.85rem;
+            letter-spacing: 2px;
+            color: var(--text-primary);
+        }
+        .rec-card-subtitle {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .rec-card-body {
+            padding: 0 24px 24px;
+        }
+
+        .rec-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .rec-item:last-child {
+            border-bottom: none;
+        }
+        .rec-bullet {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            margin-top: 6px;
+        }
+        .rec-bullet.purple { background: #9900ff; box-shadow: 0 0 8px #9900ff88; }
+        .rec-bullet.green { background: var(--green); box-shadow: 0 0 8px var(--green-dim); }
+        .rec-bullet.pink { background: #ff0099; box-shadow: 0 0 8px #ff009988; }
+        .rec-bullet.orange { background: #ff8800; box-shadow: 0 0 8px #ff880088; }
+        .rec-bullet.blue { background: #00aaff; box-shadow: 0 0 8px #00aaff88; }
+
+        .rec-text {
+            font-size: 0.9rem;
+            line-height: 1.5;
+            color: var(--text-primary);
+        }
+        .rec-text strong {
+            color: var(--cyan);
+            font-weight: 600;
+        }
+        .rec-text small {
+            display: block;
+            color: var(--text-secondary);
+            font-size: 0.78rem;
+            margin-top: 2px;
+        }
+
+        /* ===== FACE SHAPE & GENDER BADGES ===== */
+        .face-shape-badge {
+            text-align: center;
+            margin-bottom: 16px;
+        }
+        .gender-badge {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .shape-tag, .gender-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: linear-gradient(135deg, rgba(0,240,255,0.08), rgba(255,0,229,0.08));
+            border: 1px solid var(--cyan-dim);
+            border-radius: 40px;
+            padding: 12px 28px;
+            font-family: 'Orbitron', monospace;
+            font-size: 0.85rem;
+            letter-spacing: 3px;
+            color: var(--cyan);
+        }
+        .gender-tag.male {
+            border-color: rgba(0, 170, 255, 0.4);
+            color: #00aaff;
+            background: linear-gradient(135deg, rgba(0,170,255,0.08), rgba(0,100,200,0.08));
+        }
+        .gender-tag.female {
+            border-color: rgba(255, 0, 153, 0.4);
+            color: #ff0099;
+            background: linear-gradient(135deg, rgba(255,0,153,0.08), rgba(200,0,100,0.08));
+        }
+        .shape-tag .shape-icon, .gender-tag .gender-icon {
+            font-size: 1.3rem;
+        }
+
+        /* ===== LOADING / SCANNING STATE ===== */
+        .scan-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 7;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 16px;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(4px);
+            border-radius: 18px;
+        }
+        .scan-overlay.active {
+            display: flex;
+        }
+
+        .scan-spinner {
+            width: 60px;
+            height: 60px;
+            border: 3px solid transparent;
+            border-top-color: var(--cyan);
+            border-right-color: var(--magenta);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .scan-text {
+            font-family: 'Orbitron', monospace;
+            font-size: 0.75rem;
+            letter-spacing: 3px;
+            color: var(--cyan);
+            animation: blink 1s ease-in-out infinite;
+        }
+        @keyframes blink {
+            0%,100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* ===== PERMISSION SCREEN ===== */
+        .permission-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: absolute;
+            inset: 0;
+            z-index: 8;
+            background: linear-gradient(135deg, #0a0a1a, #0d0d24);
+            border-radius: 18px;
+        }
+        .permission-screen.hidden {
+            display: none;
+        }
+        .perm-icon {
+            font-size: 3rem;
+            margin-bottom: 16px;
+            opacity: 0.8;
+        }
+        .perm-text {
+            font-family: 'Orbitron', monospace;
+            font-size: 0.8rem;
+            letter-spacing: 2px;
+            color: var(--text-secondary);
+            text-align: center;
+            max-width: 280px;
+            line-height: 1.8;
+        }
+
+        /* ===== PROGRESS BAR ===== */
+        .scan-progress {
+            width: 100%;
+            max-width: 640px;
+            height: 4px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 2px;
+            overflow: hidden;
+            display: none;
+        }
+        .scan-progress.active {
+            display: block;
+        }
+        .scan-progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--cyan), var(--magenta));
+            border-radius: 2px;
+            transition: width 0.3s ease;
+            box-shadow: 0 0 10px var(--cyan);
+        }
+
+        /* ===== ANALYSIS LOG ===== */
+        .analysis-log {
+            width: 100%;
+            max-width: 640px;
+            min-height: 32px;
+            text-align: center;
+            font-family: 'Orbitron', monospace;
+            font-size: 0.65rem;
+            letter-spacing: 2px;
+            color: var(--green);
+            text-shadow: 0 0 8px var(--green-dim);
+            margin-top: 8px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .analysis-log.visible {
+            opacity: 1;
+        }
+
+        /* ===== FOOTER ===== */
+        .footer {
+            text-align: center;
+            padding: 40px 20px 24px;
+            position: relative;
+            z-index: 10;
+        }
+        .footer p {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            letter-spacing: 2px;
+        }
+        .footer .disclaimer {
+            margin-top: 8px;
+            font-size: 0.65rem;
+            color: rgba(136,136,170,0.5);
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.6;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .logo { font-size: 1.5rem; letter-spacing: 4px; }
+            .scanner-frame { max-width: 100%; }
+            .recommendations { grid-template-columns: 1fr; }
+            .features-grid { grid-template-columns: 1fr; }
+            .score-ring { width: 180px; height: 180px; }
+            .score-value { font-size: 3rem; }
+        }
+
+        /* ===== SCANNING DOTS EFFECT ===== */
+        .face-dots {
+            position: absolute;
+            inset: 0;
+            z-index: 4;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="bg-grid"></div>
+<div class="bg-particles" id="particles"></div>
+
+<!-- HEADER -->
+<header class="header">
+    <h1 class="logo">FACEAURA</h1>
+    <p class="tagline">AI-Powered Face Analysis & Style Engine</p>
+</header>
+
+<!-- MAIN -->
+<div class="main-container">
+    <div class="scanner-section">
+        <!-- Scanner Frame -->
+        <div class="scanner-frame" id="scannerFrame">
+            <div class="permission-screen" id="permScreen">
+                <div class="perm-icon">📸</div>
+                <p class="perm-text">TAP "START CAMERA" TO<br>ENABLE FACE SCANNING</p>
+            </div>
+
+            <video id="webcam" autoplay playsinline></video>
+            <canvas id="faceCanvas"></canvas>
+
+            <div class="laser-line" id="laserLine"></div>
+            <div class="laser-vertical" id="laserVertical"></div>
+
+            <div class="corner-bracket tl"></div>
+            <div class="corner-bracket tr"></div>
+            <div class="corner-bracket bl"></div>
+            <div class="corner-bracket br"></div>
+
+            <div class="hud-status" id="hudStatus">STANDBY</div>
+            <div class="hud-data" id="hudData"></div>
+            <div class="hud-fps" id="hudFps"></div>
+
+            <div class="scan-overlay" id="scanOverlay">
+                <div class="scan-spinner"></div>
+                <div class="scan-text">ANALYZING FACE DATA...</div>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="scan-progress" id="scanProgress">
+            <div class="scan-progress-fill" id="scanProgressFill"></div>
+        </div>
+
+        <!-- Analysis Log -->
+        <div class="analysis-log" id="analysisLog"></div>
+
+        <!-- Gender Selector -->
+        <div class="gender-selector" id="genderSelector">
+            <button class="gender-btn active male" id="btnMale" onclick="setGender('male')">♂ MALE</button>
+            <button class="gender-btn female" id="btnFemale" onclick="setGender('female')">♀ FEMALE</button>
+        </div>
+
+        <div class="controls">
+            <button class="btn btn-scan" id="btnStartCamera" onclick="startCamera()">▶ START CAMERA</button>
+            <button class="btn btn-scan" id="btnScan" onclick="startScan()" style="display:none">◉ SCAN FACE</button>
+            <button class="btn btn-reset" id="btnReset" onclick="resetAll()" style="display:none">↺ RESET</button>
+        </div>
+    </div>
+
+    <!-- RESULTS -->
+    <div class="results-section" id="resultsSection">
+        <div class="results-header">
+            <h2>⬡ ANALYSIS COMPLETE ⬡</h2>
+        </div>
+
+        <!-- Gender Badge -->
+        <div class="gender-badge">
+            <div class="gender-tag" id="genderTag">
+                <span class="gender-icon" id="genderIcon">⚧</span>
+                <span id="genderLabel">GENDER PROFILE</span>
+            </div>
+        </div>
+
+        <!-- Face Shape Badge -->
+        <div class="face-shape-badge">
+            <div class="shape-tag">
+                <span class="shape-icon" id="shapeIcon">◇</span>
+                <span id="faceShapeLabel">DETECTING...</span>
+            </div>
+        </div>
+
+        <!-- Score Ring -->
+        <div class="score-showcase">
+            <div class="score-ring">
+                <svg viewBox="0 0 220 220">
+                    <defs>
+                        <linearGradient id="scoreGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="var(--cyan)" />
+                            <stop offset="50%" stop-color="var(--magenta)" />
+                            <stop offset="100%" stop-color="var(--gold)" />
+                        </linearGradient>
+                    </defs>
+                    <circle class="ring-bg" cx="110" cy="110" r="100" />
+                    <circle class="ring-fill" id="scoreRing" cx="110" cy="110" r="100" />
+                </svg>
+                <span class="score-value" id="scoreValue">0</span>
+                <span class="score-label">FACE SCORE</span>
+            </div>
+        </div>
+
+        <!-- Feature Bars -->
+        <div class="features-grid" id="featuresGrid"></div>
+
+        <!-- Recommendation Cards -->
+        <div class="recommendations" id="recommendations"></div>
+    </div>
+</div>
+
+<footer class="footer">
+    <p><b>FACEAURA — MADE BY ANSHUL RAJ VERMA</b></p>
+    <p class="disclaimer">Ratings are generated using facial landmark analysis for entertainment purposes only. Beauty is subjective and unique to every individual.</p>
+</footer>
+
+<!-- MediaPipe & TensorFlow Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+<script>
+// ==========================================
+//   FACEAURA — CORE ENGINE
+// ==========================================
+
+const video = document.getElementById('webcam');
+const canvas = document.getElementById('faceCanvas');
+const ctx = canvas.getContext('2d');
+
+let faceMesh = null;
+let camera = null;
+let lastLandmarks = null;
+let isScanning = false;
+let scanFrames = [];
+let frameCount = 0;
+let lastFpsTime = Date.now();
+let fps = 0;
+let userGender = 'male';
+
+function setGender(g) {
+    userGender = g;
+    document.getElementById('btnMale').classList.remove('active');
+    document.getElementById('btnFemale').classList.remove('active');
+    if (g === 'male') {
+        document.getElementById('btnMale').classList.add('active');
+    } else {
+        document.getElementById('btnFemale').classList.add('active');
+    }
+}
+
+// ===== PARTICLES =====
+function createParticles() {
+    const container = document.getElementById('particles');
+    for (let i = 0; i < 40; i++) {
+        const p = document.createElement('div');
+        p.className = 'particle';
+        p.style.left = Math.random() * 100 + '%';
+        p.style.animationDuration = (8 + Math.random() * 15) + 's';
+        p.style.animationDelay = (Math.random() * 10) + 's';
+        p.style.width = (1 + Math.random() * 3) + 'px';
+        p.style.height = p.style.width;
+        container.appendChild(p);
+    }
+}
+createParticles();
+
+// ===== CAMERA =====
+async function startCamera() {
+    document.getElementById('btnStartCamera').style.display = 'none';
+    document.getElementById('permScreen').classList.add('hidden');
+    document.getElementById('hudStatus').textContent = 'INITIALIZING...';
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480, facingMode: 'user' }
+        });
+        video.srcObject = stream;
+        await video.play();
+
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+
+        await initFaceMesh();
+
+        document.getElementById('btnScan').style.display = 'inline-flex';
+        document.getElementById('genderSelector').style.display = 'flex';
+        document.getElementById('hudStatus').textContent = 'CAMERA ACTIVE';
+    } catch (err) {
+        console.error('Camera error:', err);
+        document.getElementById('hudStatus').textContent = 'CAMERA DENIED';
+        document.getElementById('btnStartCamera').style.display = 'inline-flex';
+        document.getElementById('permScreen').classList.remove('hidden');
+    }
+}
+
+// ===== FACE MESH INIT =====
+async function initFaceMesh() {
+    faceMesh = new FaceMesh({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+    });
+
+    faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+    });
+
+    faceMesh.onResults(onFaceResults);
+
+    camera = new Camera(video, {
+        onFrame: async () => {
+            await faceMesh.send({ image: video });
+        },
+        width: 640,
+        height: 480,
+    });
+    camera.start();
+}
+
+// ===== FACE MESH RESULTS =====
+function onFaceResults(results) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // FPS counter
+    frameCount++;
+    const now = Date.now();
+    if (now - lastFpsTime >= 1000) {
+        fps = frameCount;
+        frameCount = 0;
+        lastFpsTime = now;
+        document.getElementById('hudFps').textContent = `FPS: ${fps}`;
+    }
+
+    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+        const landmarks = results.multiFaceLandmarks[0];
+        lastLandmarks = landmarks;
+
+        document.getElementById('hudStatus').textContent = isScanning ? 'SCANNING...' : 'FACE DETECTED';
+
+        // Draw mesh with glow
+        ctx.save();
+        ctx.scale(-1, 1);
+        ctx.translate(-canvas.width, 0);
+
+        // Subtle face mesh wireframe
+        drawFaceMesh(landmarks);
+
+        // Feature points
+        drawFeaturePoints(landmarks);
+
+        ctx.restore();
+
+        // HUD data
+        const noseTip = landmarks[4];
+        document.getElementById('hudData').innerHTML =
+            `LANDMARKS: 468<br>CONF: ${(0.85 + Math.random()*0.14).toFixed(2)}<br>X: ${noseTip.x.toFixed(3)} Y: ${noseTip.y.toFixed(3)}`;
+
+        // Collect frames during scan
+        if (isScanning) {
+            scanFrames.push(JSON.parse(JSON.stringify(landmarks)));
+        }
+    } else {
+        lastLandmarks = null;
+        document.getElementById('hudStatus').textContent = 'NO FACE';
+        document.getElementById('hudData').innerHTML = '';
+    }
+}
+
+// ===== DRAWING HELPERS =====
+function drawFaceMesh(landmarks) {
+    const connections = [
+        // Jawline
+        [10,338],[338,297],[297,332],[332,284],[284,251],[251,389],[389,356],[356,454],[454,323],[323,361],[361,288],[288,397],[397,365],[365,379],[379,378],[378,400],[400,377],[377,152],[152,148],[148,176],[176,149],[149,150],[150,136],[136,172],[172,58],[58,132],[132,93],[93,234],[234,127],[127,162],[162,21],[21,54],[54,103],[103,67],[67,109],[109,10],
+        // Left eyebrow
+        [70,63],[63,105],[105,66],[66,107],[107,55],[55,65],
+        // Right eyebrow
+        [300,293],[293,334],[334,296],[296,336],[336,285],[285,295],
+        // Nose bridge
+        [168,6],[6,197],[197,195],[195,5],[5,4],
+        // Lips outer
+        [61,146],[146,91],[91,181],[181,84],[84,17],[17,314],[314,405],[405,321],[321,375],[375,291],[291,409],[409,270],[270,269],[269,267],[267,0],[0,37],[37,39],[39,40],[40,185],[185,61],
+    ];
+
+    ctx.strokeStyle = 'rgba(0, 240, 255, 0.12)';
+    ctx.lineWidth = 0.5;
+
+    for (const [i, j] of connections) {
+        const a = landmarks[i];
+        const b = landmarks[j];
+        ctx.beginPath();
+        ctx.moveTo(a.x * canvas.width, a.y * canvas.height);
+        ctx.lineTo(b.x * canvas.width, b.y * canvas.height);
+        ctx.stroke();
+    }
+}
+
+function drawFeaturePoints(landmarks) {
+    const keyPoints = [
+        // Eyes
+        33, 133, 362, 263, 159, 145, 386, 374,
+        // Nose
+        1, 4, 5, 195,
+        // Lips
+        61, 291, 0, 17,
+        // Jaw
+        152, 234, 454,
+        // Eyebrows
+        70, 300, 107, 336,
+    ];
+
+    for (const idx of keyPoints) {
+        const pt = landmarks[idx];
+        const x = pt.x * canvas.width;
+        const y = pt.y * canvas.height;
+
+        ctx.beginPath();
+        ctx.arc(x, y, isScanning ? 3 : 2, 0, Math.PI * 2);
+        ctx.fillStyle = isScanning ? 'rgba(0, 240, 255, 0.9)' : 'rgba(0, 240, 255, 0.4)';
+        ctx.fill();
+
+        if (isScanning) {
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(0, 240, 255, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+    }
+}
+
+// ===== SCAN PROCESS =====
+async function startScan() {
+    if (!lastLandmarks) {
+        document.getElementById('hudStatus').textContent = 'NO FACE DETECTED';
+        return;
+    }
+
+    isScanning = true;
+    scanFrames = [];
+
+    const btnScan = document.getElementById('btnScan');
+    btnScan.classList.add('scanning');
+    btnScan.textContent = '◉ SCANNING...';
+    btnScan.disabled = true;
+
+    // Activate laser
+    document.getElementById('laserLine').classList.add('active');
+    document.getElementById('laserVertical').classList.add('active');
+
+    // Show progress
+    const progress = document.getElementById('scanProgress');
+    const progressFill = document.getElementById('scanProgressFill');
+    progress.classList.add('active');
+
+    const log = document.getElementById('analysisLog');
+    log.classList.add('visible');
+
+    const messages = [
+        'MAPPING FACIAL LANDMARKS...',
+        'ANALYZING FACIAL SYMMETRY...',
+        'MEASURING PROPORTIONS...',
+        'EVALUATING JAWLINE STRUCTURE...',
+        'SCANNING EYE GEOMETRY...',
+        'ASSESSING SKIN REGION...',
+        'DETECTING FACE SHAPE...',
+        'COMPUTING GOLDEN RATIO...',
+        'MATCHING STYLE PROFILES...',
+        'GENERATING RECOMMENDATIONS...',
+        'COMPILING RESULTS...',
+    ];
+
+    for (let i = 0; i < messages.length; i++) {
+        log.textContent = messages[i];
+        progressFill.style.width = ((i + 1) / messages.length * 100) + '%';
+        await sleep(500 + Math.random() * 300);
+    }
+
+    // Collect final data
+    isScanning = false;
+    document.getElementById('laserLine').classList.remove('active');
+    document.getElementById('laserVertical').classList.remove('active');
+
+    // Show overlay while computing
+    document.getElementById('scanOverlay').classList.add('active');
+    await sleep(1000);
+
+    // Analyze
+    const analysisData = analyzeFace(scanFrames.length > 0 ? scanFrames : [lastLandmarks]);
+
+    // Show results
+    document.getElementById('scanOverlay').classList.remove('active');
+    progress.classList.remove('active');
+    log.classList.remove('visible');
+
+    btnScan.classList.remove('scanning');
+    btnScan.style.display = 'none';
+    document.getElementById('btnReset').style.display = 'inline-flex';
+
+    displayResults(analysisData);
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ===== FACE ANALYSIS ENGINE =====
+function analyzeFace(frames) {
+    // Average landmarks across frames for stability
+    const avgLandmarks = averageLandmarks(frames);
+    const lm = avgLandmarks;
+
+    // Distance helper
+    const dist = (a, b) => Math.sqrt(
+        Math.pow((lm[a].x - lm[b].x), 2) +
+        Math.pow((lm[a].y - lm[b].y), 2)
+    );
+
+    const dist3d = (a, b) => Math.sqrt(
+        Math.pow((lm[a].x - lm[b].x), 2) +
+        Math.pow((lm[a].y - lm[b].y), 2) +
+        Math.pow(((lm[a].z || 0) - (lm[b].z || 0)), 2)
+    );
+
+    // --- GENDER SETTING ---
+    const detectedGender = userGender; // Use manually selected gender
+
+    // --- MEASUREMENTS ---
+    // Face width (cheek to cheek via temples)
+    const faceWidth = dist(234, 454);
+    // Face height (forehead to chin)
+    const faceHeight = dist(10, 152);
+    // Jawline width
+    const jawWidth = dist(172, 397);
+    // Forehead width
+    const foreheadWidth = dist(21, 251);
+
+    // Face ratio
+    const faceRatio = faceHeight / faceWidth;
+
+    // --- FACE SHAPE DETECTION ---
+    const jawRatio = jawWidth / faceWidth;
+    const foreheadRatio = foreheadWidth / faceWidth;
+    let faceShape = 'Oval';
+
+    if (faceRatio > 1.5) {
+        faceShape = 'Oblong';
+    } else if (faceRatio < 1.1) {
+        faceShape = 'Round';
+    } else if (jawRatio < 0.75 && foreheadRatio > 0.85) {
+        faceShape = 'Heart';
+    } else if (jawRatio > 0.9) {
+        faceShape = 'Square';
+    } else if (jawRatio > foreheadRatio + 0.05) {
+        faceShape = 'Triangle';
+    } else if (foreheadRatio < jawRatio) {
+        faceShape = 'Diamond';
+    } else {
+        faceShape = 'Oval';
+    }
+
+    // --- SYMMETRY SCORE ---
+    // Compare left and right eye sizes
+    const leftEyeW = dist(33, 133);
+    const rightEyeW = dist(362, 263);
+    const eyeSymmetry = 1 - Math.abs(leftEyeW - rightEyeW) / Math.max(leftEyeW, rightEyeW);
+
+    // Compare eyebrow heights
+    const leftBrowH = lm[70].y;
+    const rightBrowH = lm[300].y;
+    const browSymmetry = 1 - Math.abs(leftBrowH - rightBrowH) * 10;
+
+    // Nose alignment
+    const noseTip = lm[4];
+    const noseCenter = (lm[234].x + lm[454].x) / 2;
+    const noseSymmetry = 1 - Math.abs(noseTip.x - noseCenter) * 5;
+
+    const symmetryScore = Math.min(10, Math.max(1, (
+        (clamp01(eyeSymmetry) * 0.35 +
+        clamp01(browSymmetry) * 0.3 +
+        clamp01(noseSymmetry) * 0.35) * 10
+    )));
+
+    // --- PROPORTION SCORE ---
+    // Golden ratio checks
+    const phi = 1.618;
+
+    // Eye spacing vs eye width
+    const eyeSpacing = dist(133, 362);
+    const avgEyeW = (leftEyeW + rightEyeW) / 2;
+    const eyeSpacingRatio = eyeSpacing / avgEyeW;
+    const eyeProportionScore = 1 - Math.min(1, Math.abs(eyeSpacingRatio - phi) / phi);
+
+    // Nose to lip ratio
+    const noseLength = dist(6, 4);
+    const lipWidth = dist(61, 291);
+    const noseLipRatio = lipWidth / noseLength;
+    const noseLipScore = 1 - Math.min(1, Math.abs(noseLipRatio - phi) / phi);
+
+    // Thirds of face
+    const upperThird = dist(10, 107);
+    const middleThird = dist(107, 4);
+    const lowerThird = dist(4, 152);
+    const avgThird = (upperThird + middleThird + lowerThird) / 3;
+    const thirdsDeviation = (
+        Math.abs(upperThird - avgThird) +
+        Math.abs(middleThird - avgThird) +
+        Math.abs(lowerThird - avgThird)
+    ) / (3 * avgThird);
+    const thirdsScore = 1 - Math.min(1, thirdsDeviation * 3);
+
+    const proportionScore = Math.min(10, Math.max(1, (
+        (eyeProportionScore * 0.35 +
+        noseLipScore * 0.3 +
+        thirdsScore * 0.35) * 10
+    )));
+
+    // --- JAW DEFINITION SCORE ---
+    // A defined jaw depends on face slimness and angularity, not just width.
+    const chinToLeftJaw = dist(152, 172);
+    const chinToRightJaw = dist(152, 397);
+    const jawVShape = (chinToLeftJaw + chinToRightJaw) / jawWidth;
+    
+    // Reward slim faces (faceRatio > 1.2 is slim/angular)
+    const slimnessBonus = Math.max(0, (faceRatio - 1.2) * 5);
+    
+    // Penalize round/wide "fat" faces (jaw almost as wide as cheeks)
+    const wideJawPenalty = jawRatio > 0.88 ? (jawRatio - 0.88) * 30 : 0;
+    
+    let jawScoreCalc = (jawVShape * 5) + slimnessBonus - wideJawPenalty + 1.5;
+    
+    // Hard caps for round shapes
+    if (faceShape === 'Round') {
+        jawScoreCalc = Math.min(jawScoreCalc, 5.8);
+    }
+    
+    const jawScore = Math.min(10, Math.max(3, jawScoreCalc));
+
+    // --- EYE APPEAL SCORE ---
+    const leftEyeH = dist(159, 145);
+    const rightEyeH = dist(386, 374);
+    const avgEyeH = (leftEyeH + rightEyeH) / 2;
+    const eyeAspect = avgEyeW / avgEyeH;
+    const eyeAppeal = Math.min(10, Math.max(1, (1 - Math.abs(eyeAspect - 3) / 3) * 10));
+
+    // --- LIP FULLNESS SCORE ---
+    const upperLipH = dist(0, 13);
+    const lowerLipH = dist(14, 17);
+    const lipFullness = (upperLipH + lowerLipH) / lipWidth;
+    const lipScore = Math.min(10, Math.max(1, clamp01(lipFullness * 5) * 10));
+
+    // --- NOSE HARMONY ---
+    const noseWidth = dist(48, 278);
+    const noseHarmony = 1 - Math.abs(noseWidth / eyeSpacing - 0.6) * 3;
+    const noseScore = Math.min(10, Math.max(1, clamp01(noseHarmony) * 10));
+
+    // --- OVERALL SCORE ---
+    const overallScore = (
+        symmetryScore * 0.25 +
+        proportionScore * 0.25 +
+        jawScore * 0.15 +
+        eyeAppeal * 0.15 +
+        lipScore * 0.1 +
+        noseScore * 0.1
+    );
+
+    // Clamp and add slight bias towards middle-high range for realism
+    const finalScore = Math.min(9.8, Math.max(4.5, overallScore * 0.7 + 3));
+
+    // Get recommendations based on face shape AND gender
+    const recs = getRecommendations(faceShape, detectedGender, {
+        jawRatio, foreheadRatio, faceRatio, eyeAspect, lipFullness
+    });
+
+    return {
+        score: parseFloat(finalScore.toFixed(1)),
+        faceShape,
+        gender: detectedGender,
+        features: {
+            symmetry: clampScore(symmetryScore),
+            proportion: clampScore(proportionScore),
+            jawline: clampScore(jawScore),
+            eyeAppeal: clampScore(eyeAppeal),
+            lipBalance: clampScore(lipScore),
+            noseHarmony: clampScore(noseScore),
+        },
+        recommendations: recs,
+        measurements: {
+            faceRatio: faceRatio.toFixed(2),
+            eyeSpacing: eyeSpacingRatio.toFixed(2),
+            jawWidth: jawRatio.toFixed(2),
+        }
+    };
+}
+
+function clamp01(v) { return Math.min(1, Math.max(0, v)); }
+function clampScore(v) { return parseFloat(Math.min(9.9, Math.max(3, v)).toFixed(1)); }
+
+function averageLandmarks(frames) {
+    if (frames.length === 1) return frames[0];
+    const avg = [];
+    for (let i = 0; i < frames[0].length; i++) {
+        let x = 0, y = 0, z = 0;
+        for (const f of frames) {
+            x += f[i].x;
+            y += f[i].y;
+            z += (f[i].z || 0);
+        }
+        avg.push({ x: x / frames.length, y: y / frames.length, z: z / frames.length });
+    }
+    return avg;
+}
+
+// ===== RECOMMENDATIONS ENGINE =====
+function getRecommendations(faceShape, gender, metrics) {
+    // ===== MALE HAIRSTYLES =====
+    const maleHairstyleDB = {
+        Oval: {
+            styles: [
+                { name: 'Textured Quiff', desc: 'A versatile, volume-on-top look that highlights your balanced proportions.' },
+                { name: 'Side Part', desc: 'Classic and refined — works beautifully with your oval symmetry.' },
+                { name: 'Medium-Length Waves', desc: 'Relaxed flow that complements your natural face balance.' },
+            ]
+        },
+        Round: {
+            styles: [
+                { name: 'High Fade with Volume Top', desc: 'Adds height and angles to create a more structured silhouette.' },
+                { name: 'Pompadour', desc: 'Elongates the face shape with dramatic top volume.' },
+                { name: 'Angular Fringe', desc: 'Diagonal lines break up the roundness and add edge.' },
+            ]
+        },
+        Square: {
+            styles: [
+                { name: 'Textured Crop', desc: 'Softens strong angular features with a relaxed, modern look.' },
+                { name: 'Short Sides, Messy Top', desc: 'Balances your strong jawline with casual texture.' },
+                { name: 'Brush Back', desc: 'Shows off your defined structure while keeping it sleek.' },
+            ]
+        },
+        Heart: {
+            styles: [
+                { name: 'Side-Swept Fringe', desc: 'Adds width at jaw level and softens a wider forehead.' },
+                { name: 'Medium Layered Cut', desc: 'Creates balance between forehead and chin proportions.' },
+                { name: 'Textured Crop', desc: 'Casual texture that works with your tapered chin.' },
+            ]
+        },
+        Oblong: {
+            styles: [
+                { name: 'Side-Part with Volume', desc: 'Adds width and breaks up the length of your face.' },
+                { name: 'Layered Fringe', desc: 'Shortens the visual length and adds dimension.' },
+                { name: 'Curly/Wavy Mid-Length', desc: 'Natural texture creates the illusion of width.' },
+            ]
+        },
+        Diamond: {
+            styles: [
+                { name: 'Textured Fringe', desc: 'Softens angular cheekbones with a casual forehead cover.' },
+                { name: 'Medium Taper', desc: 'Adds width at the jaw to balance narrow chin and forehead.' },
+                { name: 'Side-Swept Volume', desc: 'Fills out the forehead area for balanced proportions.' },
+            ]
+        },
+        Triangle: {
+            styles: [
+                { name: 'Volume on Top', desc: 'Adds width at the forehead to balance a wider jawline.' },
+                { name: 'Swept-Back Layers', desc: 'Creates fullness above to counterbalance the jaw.' },
+                { name: 'Side Part Quiff', desc: 'Draws attention upward and adds upper-face dimension.' },
+            ]
+        },
+    };
+
+    // ===== FEMALE HAIRSTYLES =====
+    const femaleHairstyleDB = {
+        Oval: {
+            styles: [
+                { name: 'Long Layers', desc: 'Timeless and flattering — layers frame your balanced oval face beautifully.' },
+                { name: 'Soft Bob', desc: 'A chin-length bob adds elegance and shows off your proportions.' },
+                { name: 'Loose Beach Waves', desc: 'Effortless and romantic — perfect for your versatile face shape.' },
+            ]
+        },
+        Round: {
+            styles: [
+                { name: 'Long Side-Swept Layers', desc: 'Elongates your face with diagonal lines and flowing layers.' },
+                { name: 'Lob (Long Bob)', desc: 'Falls just past the chin to create a slimming vertical effect.' },
+                { name: 'High Ponytail / Top Knot', desc: 'Adds height and draws the eye upward for a sculpted look.' },
+            ]
+        },
+        Square: {
+            styles: [
+                { name: 'Soft Waves & Curls', desc: 'Softens your strong jawline with romantic, flowing texture.' },
+                { name: 'Layered Shoulder-Length', desc: 'Rounded layers complement angular features beautifully.' },
+                { name: 'Side-Parted Long Hair', desc: 'Asymmetry softens the square structure for an elegant look.' },
+            ]
+        },
+        Heart: {
+            styles: [
+                { name: 'Chin-Length Bob', desc: 'Adds visual width at the jawline for perfect balance.' },
+                { name: 'Side-Swept Bangs', desc: 'Softens a wider forehead and draws attention to your eyes.' },
+                { name: 'Medium Layers with Volume Below', desc: 'Creates fullness at the chin level for proportional harmony.' },
+            ]
+        },
+        Oblong: {
+            styles: [
+                { name: 'Curtain Bangs', desc: 'Shortens the visual face length with a trendy, face-framing look.' },
+                { name: 'Voluminous Waves', desc: 'Adds width and breaks the vertical length of your face.' },
+                { name: 'Shoulder-Length with Layers', desc: 'Creates the illusion of width with bouncy movement.' },
+            ]
+        },
+        Diamond: {
+            styles: [
+                { name: 'Side-Swept Long Layers', desc: 'Softens angular cheekbones with flowing, face-framing layers.' },
+                { name: 'Wispy Bangs', desc: 'Adds softness to your forehead while highlighting cheekbones.' },
+                { name: 'Textured Lob', desc: 'Chin-level fullness balances narrow chin and forehead.' },
+            ]
+        },
+        Triangle: {
+            styles: [
+                { name: 'Voluminous Top Layers', desc: 'Adds width at the forehead to balance a wider jawline.' },
+                { name: 'Side-Part with Bouncy Curls', desc: 'Creates fullness above to counterbalance the jaw.' },
+                { name: 'Layered Pixie Cut', desc: 'Draws attention upward with chic, face-framing volume.' },
+            ]
+        },
+    };
+
+    // ===== MALE BEARD STYLES =====
+    const beardDB = {
+        Oval: {
+            styles: [
+                { name: 'Short Boxed Beard', desc: 'Maintains your balanced proportions without hiding them.' },
+                { name: 'Designer Stubble', desc: 'A 3-5 day stubble adds ruggedness while keeping the clean oval visible.' },
+            ]
+        },
+        Round: {
+            styles: [
+                { name: 'Extended Goatee', desc: 'Elongates the face with a vertical focal point.' },
+                { name: 'Sharp Jawline Beard', desc: 'Define your jaw with angular beard lines to add structure.' },
+            ]
+        },
+        Square: {
+            styles: [
+                { name: 'Circle Beard', desc: 'Rounds out the angular jawline for a softer, approachable look.' },
+                { name: 'Medium Stubble', desc: 'Keeps your strong jaw visible while adding warmth and texture.' },
+            ]
+        },
+        Heart: {
+            styles: [
+                { name: 'Full Beard (Medium)', desc: 'Adds mass to the chin area, balancing the wider forehead.' },
+                { name: 'Chin Strap', desc: 'Defines the lower face and adds visual weight below.' },
+            ]
+        },
+        Oblong: {
+            styles: [
+                { name: 'Mutton Chops / Sideburns', desc: 'Adds width to the sides, shortening the perceived face length.' },
+                { name: 'Short Stubble', desc: 'Keeps the face clean without adding more vertical length.' },
+            ]
+        },
+        Diamond: {
+            styles: [
+                { name: 'Full Beard', desc: 'Fills out the narrow chin and adds balance to angular cheekbones.' },
+                { name: 'Anchor Beard', desc: 'Draws attention to the chin with a sleek, defined shape.' },
+            ]
+        },
+        Triangle: {
+            styles: [
+                { name: 'Clean Shaven or Light Stubble', desc: 'Avoid adding width to an already wide jaw — keep it clean.' },
+                { name: 'Soul Patch', desc: 'A small accent that doesn\'t widen the lower face further.' },
+            ]
+        },
+    };
+
+    // ===== FEMALE MAKEUP TIPS =====
+    const makeupDB = {
+        Oval: [
+            { name: 'Natural Glow Look', desc: 'Your balanced proportions shine with a dewy, minimal makeup look — highlighter on cheekbones and a nude lip.' },
+            { name: 'Winged Eyeliner', desc: 'A classic wing accentuates your balanced eye spacing and adds drama.' },
+            { name: 'Soft Contour', desc: 'Light bronzer under cheekbones enhances your natural structure without overdoing it.' },
+        ],
+        Round: [
+            { name: 'Angular Contour', desc: 'Apply bronzer below cheekbones and along jawline to create defined angles.' },
+            { name: 'Cat Eye Liner', desc: 'Elongated wing tips lift and lengthen the visual profile of your face.' },
+            { name: 'Highlight Nose Bridge', desc: 'A thin highlight down the nose bridge creates a lengthening vertical line.' },
+        ],
+        Square: [
+            { name: 'Soft Blush Draping', desc: 'Apply blush in a sweeping motion from cheekbones to temples to soften angles.' },
+            { name: 'Rounded Lip Liner', desc: 'Overline the cupid\'s bow slightly for a softer, more rounded lip shape.' },
+            { name: 'Soft Smoky Eye', desc: 'Blended, rounded eyeshadow softens the angular structure beautifully.' },
+        ],
+        Heart: [
+            { name: 'Bronzer on Forehead Edges', desc: 'Slim the wider forehead with bronzer blended at the temples.' },
+            { name: 'Full Lip Color', desc: 'Bold lip color draws attention to the lower face, creating balance.' },
+            { name: 'Soft Under-Eye Highlight', desc: 'Brightens the mid-face and draws focus to your eyes.' },
+        ],
+        Oblong: [
+            { name: 'Horizontal Blush Application', desc: 'Apply blush across cheeks in a horizontal sweep to add width.' },
+            { name: 'Bold Lip Colors', desc: 'Draws attention to the lower face, reducing the visual length.' },
+            { name: 'Avoid Vertical Highlight', desc: 'Skip nose-bridge highlighting — focus on cheekbone glow instead.' },
+        ],
+        Diamond: [
+            { name: 'Highlight Forehead & Chin', desc: 'Brightens the narrow areas to balance wide cheekbones.' },
+            { name: 'Soft Eye Looks', desc: 'Gentle matte eyeshadow keeps focus balanced across the face.' },
+            { name: 'Nude/Rose Lip Tones', desc: 'Subtle lip color keeps proportions harmonious without competing with cheekbones.' },
+        ],
+        Triangle: [
+            { name: 'Bold Eye Makeup', desc: 'Statement eyes draw attention upward, balancing a wider jaw.' },
+            { name: 'Contour the Jawline', desc: 'Apply bronzer along jaw edges to slim and soften the lower face.' },
+            { name: 'Highlight the Forehead', desc: 'A touch of luminizer on the forehead adds width up top.' },
+        ],
+    };
+
+    // ===== SKINCARE (gender-aware) =====
+    const skinCareDB = {
+        male: [
+            { step: 'Gentle Cleanser', detail: 'Use a sulfate-free gel or foam cleanser morning and night. Focus on the T-zone.' },
+            { step: 'Exfoliation (2x/week)', detail: 'Chemical exfoliant with BHA/AHA to remove dead skin and prevent clogged pores.' },
+            { step: 'Hydrating Toner', detail: 'Hyaluronic acid or niacinamide toner to prep and hydrate skin.' },
+            { step: 'Vitamin C Serum (AM)', detail: 'Brightens skin, fights free radicals, and evens skin tone.' },
+            { step: 'Retinol Serum (PM)', detail: 'Boosts collagen, fights wrinkles, and improves overall skin texture.' },
+            { step: 'Moisturizer', detail: 'Lightweight gel moisturizer for oily skin, cream for dry skin. Always hydrate.' },
+            { step: 'Sunscreen SPF 50+', detail: 'Non-negotiable. Apply every morning to prevent aging and dark spots.' },
+        ],
+        female: [
+            { step: 'Double Cleanse (PM)', detail: 'Oil cleanser to remove makeup first, then a gentle water-based cleanser.' },
+            { step: 'Gentle Cleanser (AM)', detail: 'Use a mild, pH-balanced cleanser in the morning — no harsh scrubbing.' },
+            { step: 'Exfoliation (2-3x/week)', detail: 'AHA (glycolic/lactic) for glow, BHA (salicylic) for pores and oil control.' },
+            { step: 'Hydrating Essence/Toner', detail: 'Layer a hydrating toner with hyaluronic acid — pat gently, don\'t rub.' },
+            { step: 'Vitamin C Serum (AM)', detail: 'Brightens, evens skin tone, and protects against environmental damage.' },
+            { step: 'Retinol / Bakuchiol (PM)', detail: 'Anti-aging powerhouse — start low (0.25%) and build up. Bakuchiol is a gentle alternative.' },
+            { step: 'Eye Cream', detail: 'Hydrate the delicate under-eye area to prevent fine lines and dark circles.' },
+            { step: 'Moisturizer', detail: 'Rich cream for dry skin, gel-cream for oily/combo. Lock in all your serums.' },
+            { step: 'Sunscreen SPF 50+', detail: 'The #1 anti-aging product. Reapply every 2 hours when outdoors.' },
+        ]
+    };
+
+    // ===== MALE CLOTHING =====
+    const maleClothesDB = {
+        Oval: [
+            { item: 'Well-Fitted Crew Neck Tees', tip: 'Your balanced proportions suit almost any neckline — crew is timeless.' },
+            { item: 'Tailored Blazers', tip: 'Structured shoulders complement your symmetrical face shape.' },
+            { item: 'Open Collar Shirts', tip: 'Casual elegance — shows off your neck and jawline naturally.' },
+        ],
+        Round: [
+            { item: 'V-Neck Tops', tip: 'Creates a vertical line that elongates and slims the visual profile.' },
+            { item: 'Structured Jackets', tip: 'Angular shoulders add contrast to soft facial curves.' },
+            { item: 'Vertical Stripe Shirts', tip: 'Creates the illusion of length and a leaner silhouette.' },
+        ],
+        Square: [
+            { item: 'Round Neck / Scoop Neck', tip: 'Softens your angular features with curved necklines.' },
+            { item: 'Relaxed-Fit Shirts', tip: 'Casual fits complement your strong structure without looking rigid.' },
+            { item: 'Layered Outfits', tip: 'Adds dimension and softness to your naturally sharp look.' },
+        ],
+        Heart: [
+            { item: 'Boat Neck/Wide Necklines', tip: 'Broadens the lower visual frame to match your forehead width.' },
+            { item: 'Structured Bottom-Heavy Layers', tip: 'Jackets with detailing at the waist balance the visual weight.' },
+            { item: 'Dark V-Necks with Layers', tip: 'Draws the eye down and creates proportion balance.' },
+        ],
+        Oblong: [
+            { item: 'Turtlenecks & High Collars', tip: 'Shortens the visual face length and adds cozy sophistication.' },
+            { item: 'Horizontal Stripe Tees', tip: 'Adds visual width to balance the elongated face shape.' },
+            { item: 'Cropped Jackets', tip: 'Breaks up vertical lines and adds proportional balance.' },
+        ],
+        Diamond: [
+            { item: 'Crew Neck with Shoulder Detail', tip: 'Balances your angular cheekbones with shoulder-width emphasis.' },
+            { item: 'Fitted Button-Downs', tip: 'Clean lines complement your naturally defined bone structure.' },
+            { item: 'Patterned Shirts', tip: 'Geometric patterns echo and enhance your angular features.' },
+        ],
+        Triangle: [
+            { item: 'Statement Tops & Bold Shoulders', tip: 'Adds width up top to counterbalance a wider jaw.' },
+            { item: 'Padded / Structured Jackets', tip: 'Creates a V-shape silhouette, balancing proportions.' },
+            { item: 'Bright Color Tops + Dark Bottoms', tip: 'Draws the eye upward for visual equilibrium.' },
+        ],
+    };
+
+    // ===== FEMALE CLOTHING =====
+    const femaleClothesDB = {
+        Oval: [
+            { item: 'Wrap Dresses / Tops', tip: 'Highlights your balanced proportions with a universally flattering silhouette.' },
+            { item: 'Fitted Blazers', tip: 'Structured shoulders complement your symmetrical features beautifully.' },
+            { item: 'Off-Shoulder Tops', tip: 'Shows off your collarbone and neck — a stunning, elegant choice.' },
+        ],
+        Round: [
+            { item: 'V-Neck & Plunging Necklines', tip: 'Creates a vertical line that elongates and slims the visual profile.' },
+            { item: 'A-Line Dresses', tip: 'Flows outward from the waist, creating an elongating silhouette.' },
+            { item: 'Long Pendant Necklaces', tip: 'Draws the eye down for a lengthening visual effect.' },
+        ],
+        Square: [
+            { item: 'Scoop & Sweetheart Necklines', tip: 'Curved necklines soften your strong angular features.' },
+            { item: 'Flowy Blouses', tip: 'Soft fabrics and draping add femininity to your defined structure.' },
+            { item: 'Wrap Dresses', tip: 'Creates curve-enhancing lines that complement your strong frame.' },
+        ],
+        Heart: [
+            { item: 'Boat Neck / Bardot Tops', tip: 'Balances a wider forehead by broadening the shoulder line.' },
+            { item: 'Flared Skirts & A-Lines', tip: 'Adds volume to the lower half for proportional harmony.' },
+            { item: 'V-Neck with Layering', tip: 'Draws attention to the décolletage and balances the forehead.' },
+        ],
+        Oblong: [
+            { item: 'High Neck / Turtleneck Tops', tip: 'Shortens visual face length while looking effortlessly chic.' },
+            { item: 'Horizontal-Striped Tops', tip: 'Adds visual width to balance your elongated face shape.' },
+            { item: 'Cropped Jackets & Boleros', tip: 'Breaks up vertical lines and adds proportional balance.' },
+        ],
+        Diamond: [
+            { item: 'Crew Neck Fitted Tops', tip: 'Balances your angular cheekbones with a clean, structured neckline.' },
+            { item: 'Peplum Tops', tip: 'Adds hip width to balance your striking cheekbones.' },
+            { item: 'Textured & Printed Blouses', tip: 'Patterns complement your naturally dramatic bone structure.' },
+        ],
+        Triangle: [
+            { item: 'Statement Shoulder Tops', tip: 'Adds width up top to counterbalance a wider jawline.' },
+            { item: 'Structured Blazers', tip: 'Creates a V-shape silhouette, balancing your proportions.' },
+            { item: 'Bold Earrings & Necklaces', tip: 'Accessories that draw attention upward create visual equilibrium.' },
+        ],
+    };
+
+    const hairstyleDB = gender === 'female' ? femaleHairstyleDB : maleHairstyleDB;
+    const clothesDB = gender === 'female' ? femaleClothesDB : maleClothesDB;
+
+    const result = {
+        hairstyles: (hairstyleDB[faceShape] || hairstyleDB.Oval).styles,
+        skincare: skinCareDB[gender] || skinCareDB.male,
+        clothing: clothesDB[faceShape] || clothesDB.Oval,
+    };
+
+    // Males get beard styles, females get makeup tips
+    if (gender === 'female') {
+        result.makeupTips = makeupDB[faceShape] || makeupDB.Oval;
+        result.beardStyles = null;
+    } else {
+        result.beardStyles = (beardDB[faceShape] || beardDB.Oval).styles;
+        result.makeupTips = null;
+    }
+
+    return result;
+}
+
+// ===== DISPLAY RESULTS =====
+function displayResults(data) {
+    const section = document.getElementById('resultsSection');
+    section.classList.add('visible');
+
+    // Gender badge
+    const genderTag = document.getElementById('genderTag');
+    const genderIcon = document.getElementById('genderIcon');
+    const genderLabel = document.getElementById('genderLabel');
+    genderTag.className = `gender-tag ${data.gender}`;
+    if (data.gender === 'male') {
+        genderIcon.textContent = '♂';
+        genderLabel.textContent = `MALE PROFILE APPLIED`;
+    } else {
+        genderIcon.textContent = '♀';
+        genderLabel.textContent = `FEMALE PROFILE APPLIED`;
+    }
+
+    // Face shape
+    const shapeIcons = {
+        Oval: '⬮', Round: '⬤', Square: '⬛', Heart: '♥',
+        Oblong: '⬯', Diamond: '◆', Triangle: '▲'
+    };
+    document.getElementById('shapeIcon').textContent = shapeIcons[data.faceShape] || '◇';
+    document.getElementById('faceShapeLabel').textContent = `${data.faceShape.toUpperCase()} FACE SHAPE`;
+
+    // Animate score
+    animateScore(data.score);
+
+    // Feature bars
+    const featuresGrid = document.getElementById('featuresGrid');
+    featuresGrid.innerHTML = '';
+
+    const featureConfig = [
+        { key: 'symmetry', label: 'Facial Symmetry', icon: '⚖️', color: 'cyan' },
+        { key: 'proportion', label: 'Golden Proportions', icon: '📐', color: 'gold' },
+        { key: 'jawline', label: 'Jawline Definition', icon: '💎', color: 'magenta' },
+        { key: 'eyeAppeal', label: 'Eye Appeal', icon: '👁️', color: 'cyan' },
+        { key: 'lipBalance', label: 'Lip Balance', icon: '💋', color: 'magenta' },
+        { key: 'noseHarmony', label: 'Nose Harmony', icon: '👃', color: 'gold' },
+    ];
+
+    featureConfig.forEach((fc, i) => {
+        const val = data.features[fc.key];
+        const pct = (val / 10 * 100).toFixed(0);
+        const bar = document.createElement('div');
+        bar.className = 'feature-bar';
+        bar.innerHTML = `
+            <span class="feature-icon">${fc.icon}</span>
+            <div class="feature-info">
+                <div class="feature-name">${fc.label}</div>
+                <div class="feature-track">
+                    <div class="feature-fill ${fc.color}" id="feat-${fc.key}"></div>
+                </div>
+            </div>
+            <span class="feature-score">${val}</span>
+        `;
+        featuresGrid.appendChild(bar);
+
+        setTimeout(() => {
+            document.getElementById(`feat-${fc.key}`).style.width = pct + '%';
+        }, 300 + i * 150);
+    });
+
+    // Recommendation cards
+    const recsContainer = document.getElementById('recommendations');
+    recsContainer.innerHTML = '';
+
+    // Hairstyle card
+    const hairEmoji = data.gender === 'female' ? '💇‍♀️' : '💇‍♂️';
+    recsContainer.innerHTML += createRecCard(
+        hairEmoji, 'hair', 'HAIRSTYLE', 'Best Styles for Your Face',
+        data.recommendations.hairstyles.map(s => ({
+            bullet: 'purple',
+            html: `<strong>${s.name}</strong><small>${s.desc}</small>`
+        }))
+    );
+
+    // Beard card (male) OR Makeup Tips card (female)
+    if (data.gender === 'male' && data.recommendations.beardStyles) {
+        recsContainer.innerHTML += createRecCard(
+            '🧔', 'beard', 'BEARD STYLE', 'Facial Hair That Fits',
+            data.recommendations.beardStyles.map(s => ({
+                bullet: 'green',
+                html: `<strong>${s.name}</strong><small>${s.desc}</small>`
+            }))
+        );
+    } else if (data.recommendations.makeupTips) {
+        recsContainer.innerHTML += createRecCard(
+            '💄', 'makeup', 'MAKEUP TIPS', 'Looks That Enhance Your Features',
+            data.recommendations.makeupTips.map(s => ({
+                bullet: 'pink',
+                html: `<strong>${s.name}</strong><small>${s.desc}</small>`
+            }))
+        );
+    }
+
+    // Skincare card
+    recsContainer.innerHTML += createRecCard(
+        '✨', 'skin', 'SKINCARE ROUTINE', 'Daily Face Care Protocol',
+        data.recommendations.skincare.map(s => ({
+            bullet: 'orange',
+            html: `<strong>${s.step}</strong><small>${s.detail}</small>`
+        }))
+    );
+
+    // Clothing card
+    const clothesEmoji = data.gender === 'female' ? '👗' : '👔';
+    recsContainer.innerHTML += createRecCard(
+        clothesEmoji, 'clothes', 'CLOTHING STYLE', 'Outfit Recommendations',
+        data.recommendations.clothing.map(s => ({
+            bullet: 'blue',
+            html: `<strong>${s.item}</strong><small>${s.tip}</small>`
+        }))
+    );
+
+    // Scroll to results
+    setTimeout(() => {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 400);
+}
+
+function createRecCard(emoji, iconClass, title, subtitle, items) {
+    const itemsHTML = items.map(it =>
+        `<div class="rec-item">
+            <div class="rec-bullet ${it.bullet}"></div>
+            <div class="rec-text">${it.html}</div>
+        </div>`
+    ).join('');
+
+    return `
+        <div class="rec-card">
+            <div class="rec-card-header">
+                <div class="rec-card-icon ${iconClass}">${emoji}</div>
+                <div>
+                    <div class="rec-card-title">${title}</div>
+                    <div class="rec-card-subtitle">${subtitle}</div>
+                </div>
+            </div>
+            <div class="rec-card-body">${itemsHTML}</div>
+        </div>
+    `;
+}
+
+function animateScore(targetScore) {
+    const scoreEl = document.getElementById('scoreValue');
+    const ringEl = document.getElementById('scoreRing');
+    const circumference = 2 * Math.PI * 100; // r=100
+    let current = 0;
+    const duration = 2000;
+    const startTime = Date.now();
+
+    function update() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(1, elapsed / duration);
+        // Ease out cubic
+        const eased = 1 - Math.pow(1 - progress, 3);
+        current = eased * targetScore;
+
+        scoreEl.textContent = current.toFixed(1);
+
+        const offset = circumference - (current / 10) * circumference;
+        ringEl.style.strokeDashoffset = offset;
+
+        if (progress < 1) {
+            requestAnimationFrame(update);
+        }
+    }
+    update();
+}
+
+// ===== RESET =====
+function resetAll() {
+    document.getElementById('resultsSection').classList.remove('visible');
+    document.getElementById('btnScan').style.display = 'inline-flex';
+    document.getElementById('btnScan').textContent = '◉ SCAN FACE';
+    document.getElementById('btnScan').disabled = false;
+    document.getElementById('genderSelector').style.display = 'flex';
+    document.getElementById('btnReset').style.display = 'none';
+    document.getElementById('scanProgressFill').style.width = '0%';
+    document.getElementById('scoreValue').textContent = '0';
+    document.getElementById('scoreRing').style.strokeDashoffset = 628;
+    document.getElementById('hudStatus').textContent = 'CAMERA ACTIVE';
+}
+</script>
+
+</body>
+</html>
